@@ -11,6 +11,8 @@ const Room = () => {
     const receiveChannel = useRef();
     const fileChunks = useRef([]);
     const { roomID } = useParams();
+    const fileName = useRef("");
+    const fileType = useRef("");
 
     const [isConnected, setIsConnected] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
@@ -272,28 +274,35 @@ const Room = () => {
 
     const handleReceiveMessage = (event) => {
         try {
-            if (typeof event.data === 'string') {
+            if (typeof event.data === "string") {
                 const message = JSON.parse(event.data);
-                
-                if (message.type === 'metadata') {
+    
+                if (message.type === "metadata") {
                     // New file transfer starting
                     const metadata = JSON.parse(message.data);
-                    console.log('Receiving file:', metadata);
+                    console.log("Receiving file:", metadata);
+                    
+                    // Store the filename and type for later use
+                    fileName.current = metadata.name;
+                    fileType.current = metadata.type; // MIME type
+    
                     fileChunks.current = [];
                     setIsReceivingFile(true);
-                } else if (message.type === 'end') {
+                } else if (message.type === "end") {
                     // File transfer complete
-                    const blob = new Blob(fileChunks.current);
-                    const file = new File([blob], 'received-file', { type: blob.type });
-
+                    const blob = new Blob(fileChunks.current, { type: fileType.current }); // Correct MIME type
+                    const file = new File([blob], fileName.current, { type: fileType.current });
+    
                     const url = URL.createObjectURL(file);
                     
                     // Create download link
-                    const a = document.createElement('a');
+                    const a = document.createElement("a");
                     a.href = url;
-                    a.download = 'received-file';
+                    a.download = fileName.current; // Ensure correct name & extension
+                    document.body.appendChild(a);
                     a.click();
-                    
+                    document.body.removeChild(a); // Cleanup
+    
                     // Cleanup
                     URL.revokeObjectURL(url);
                     fileChunks.current = [];
@@ -301,15 +310,15 @@ const Room = () => {
                     setReceiveProgress(0);
                 }
             } else {
-                // Received a chunk of file data
+                // Receiving actual file chunks
                 fileChunks.current.push(event.data);
-                const totalSize = fileChunks.current.reduce((acc, chunk) => acc + chunk.byteLength, 0);
-                setReceiveProgress(totalSize);
+                setReceiveProgress((prev) => prev + event.data.byteLength);
             }
-        } catch (err) {
-            console.error('Error handling received message:', err);
+        } catch (error) {
+            console.error("Error processing received data:", error);
         }
     };
+    
 
     const handleIceCandidateEvent = (e) => {
         if (e.candidate) {
