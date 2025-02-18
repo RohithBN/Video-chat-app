@@ -156,11 +156,15 @@ const Room = () => {
             userStream.current.getTracks().forEach((track) => {
                 peerRef.current.addTrack(track, userStream.current);
             });
-
+            sendChannel.current = peerRef.current.createDataChannel("sendData");
+            setupDataChannel(sendChannel.current, false); // false → This is the sender
             // Create data channel for receiving
             peerRef.current.ondatachannel = (event) => {
                 receiveChannel.current = event.channel;
-                setupDataChannel(receiveChannel.current, true);
+                if (receiveChannel.current) {
+                    setupDataChannel(receiveChannel.current, true);
+                }
+                
             };
 
             const answer = await peerRef.current.createAnswer();
@@ -184,7 +188,16 @@ const Room = () => {
 
         // Create data channel for sending
         sendChannel.current = peerRef.current.createDataChannel("sendDataChannel");
+        if(sendChannel.current) {
         setupDataChannel(sendChannel.current, false);
+        }
+        peerRef.current.ondatachannel = (event) => {
+            receiveChannel.current = event.channel;
+            if (receiveChannel.current) {
+                setupDataChannel(receiveChannel.current, true);
+            }
+            
+        };
 
         try {
             const offer = await peerRef.current.createOffer();
@@ -270,7 +283,9 @@ const Room = () => {
                     setIsReceivingFile(true);
                 } else if (message.type === 'end') {
                     // File transfer complete
-                    const file = new Blob(fileChunks.current);
+                    const blob = new Blob(fileChunks.current);
+                    const file = new File([blob], 'received-file', { type: blob.type });
+
                     const url = URL.createObjectURL(file);
                     
                     // Create download link
