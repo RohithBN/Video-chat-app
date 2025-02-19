@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { MessageCircle, Send, Video, FileUp } from "lucide-react";
+
 
 const Room = () => {
     const userVideo = useRef();
@@ -13,12 +15,18 @@ const Room = () => {
     const { roomID } = useParams();
     const fileName = useRef("");
     const fileType = useRef("");
+    const sendMessageChannel=useRef();
+    const receiveMessageChannel=useRef();
 
     const [isConnected, setIsConnected] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
     const [sendProgress, setSendProgress] = useState(0);
     const [receiveProgress, setReceiveProgress] = useState(0);
     const [isReceivingFile, setIsReceivingFile] = useState(false);
+    const [message,setMessage]=useState("");
+    const [isSending, setIsSending] = useState(false);
+    const [receivedMessage,setReceivedMessage]=useState("")
+    const [messages, setMessages] = useState([]);
 
     const openCamera = async () => {
         const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -159,12 +167,21 @@ const Room = () => {
                 peerRef.current.addTrack(track, userStream.current);
             });
             sendChannel.current = peerRef.current.createDataChannel("sendData");
+            sendMessageChannel.current= peerRef.current.createDataChannel("sendMessage")
             setupDataChannel(sendChannel.current, false); // false → This is the sender
+            setUpMessageChannel(sendChannel.current,false);
             // Create data channel for receiving
             peerRef.current.ondatachannel = (event) => {
-                receiveChannel.current = event.channel;
+                const channel = event.channel;
+                if(channel.label==='sendDataChannel'){
+                    receiveChannel.current=channel
+                }
+                else if(channel.label==='messageDataChannel'){
+                    receiveMessageChannel.current=channel;
+                }
                 if (receiveChannel.current) {
                     setupDataChannel(receiveChannel.current, true);
+                    setUpMessageChannel(receiveMessageChannel.current,true);
                 }
                 
             };
@@ -188,15 +205,27 @@ const Room = () => {
             peerRef.current.addTrack(track, userStream.current);
         });
 
-        // Create data channel for sending
+        // Create data channel for sending file
         sendChannel.current = peerRef.current.createDataChannel("sendDataChannel");
+        // create another data channel for sending messages
+        sendMessageChannel.current=peerRef.current.createDataChannel("messageDataChannel")
         if(sendChannel.current) {
         setupDataChannel(sendChannel.current, false);
         }
+        if(sendMessageChannel.current){
+            setUpMessageChannel(sendMessageChannel.current,false);
+        }
         peerRef.current.ondatachannel = (event) => {
-            receiveChannel.current = event.channel;
+            const channel = event.channel;
+            if(channel.label==='sendData'){
+                receiveChannel.current=channel
+            }
+            else if(channel.label==='sendMessage'){
+                receiveMessageChannel.current=channel;
+            }
             if (receiveChannel.current) {
                 setupDataChannel(receiveChannel.current, true);
+                setUpMessageChannel(receiveMessageChannel.current,true);
             }
             
         };
@@ -227,9 +256,26 @@ const Room = () => {
         };
 
         if (isReceiver) {
-            channel.onmessage = handleReceiveMessage;
+            channel.onmessage = handleReceiveFile;
         }
     };
+
+    const setUpMessageChannel=(channel,isReceiver)=>{
+        channel.onopen = () => {
+            console.log(`${isReceiver ? 'Receive' : 'Send'} channel opened`);
+            setIsConnected(true);
+        };
+
+        channel.onclose = () => {
+            console.log(`${isReceiver ? 'Receive' : 'Send'} channel closed`);
+            setIsConnected(false);
+        };
+        
+        if(isReceiver){
+            channel.onmessage=handleReceiveMessage;
+        }
+        
+    }
 
     const handleFileSelect = (event) => {
         const file = event.target.files[0];
@@ -272,7 +318,24 @@ const Room = () => {
         }
     };
 
-    const handleReceiveMessage = (event) => {
+    const sendMessage = () => {
+        if (!message.trim() || !sendMessageChannel.current || isSending) {
+            return;
+        }
+
+        try {
+            setIsSending(true);
+            sendMessageChannel.current.send(message);
+            setMessages(prev => [...prev, { text: message, sender: "You" }]);
+        } catch (error) {
+            setError("Failed to send message: " + error.message);
+        } finally {
+            setIsSending(false);
+            setMessage("");
+        }
+    };
+
+    const handleReceiveFile = (event) => {
         try {
             if (typeof event.data === "string") {
                 const message = JSON.parse(event.data);
@@ -318,6 +381,15 @@ const Room = () => {
             console.error("Error processing received data:", error);
         }
     };
+
+    const handleReceiveMessage = (event) => {
+        try {
+            const receivedMessage = event.data;
+            setMessages(prev => [...prev, { text: receivedMessage, sender: "Partner" }]);
+        } catch (error) {
+            setError("Failed to receive message: " + error.message);
+        }
+    };
     
 
     const handleIceCandidateEvent = (e) => {
@@ -335,42 +407,47 @@ const Room = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto p-4">
-            <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="max-w-6xl mx-auto p-4 space-y-6">
+
+            <div className="grid md:grid-cols-2 gap-4">
                 <div className="relative">
                     <video 
-                        className="w-full rounded-lg bg-gray-800" 
+                        className="w-full h-64 object-cover rounded-lg bg-gray-800"
                         autoPlay 
                         ref={userVideo} 
                         muted
                         controls={true}
                     />
-                    <span className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-75 text-white px-2 py-1 rounded">
-                        You
-                    </span>
+                    <div className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-75 text-white px-2 py-1 rounded flex items-center">
+                        <Video className="w-4 h-4 mr-2" />
+                        <span>You</span>
+                    </div>
                 </div>
                 <div className="relative">
                     <video 
-                        className="w-full rounded-lg bg-gray-800" 
+                        className="w-full h-64 object-cover rounded-lg bg-gray-800"
                         autoPlay 
                         ref={partnerVideo}
                         controls={true}
                     />
-                    <span className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-75 text-white px-2 py-1 rounded">
-                        Partner
-                    </span>
+                    <div className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-75 text-white px-2 py-1 rounded flex items-center">
+                        <Video className="w-4 h-4 mr-2" />
+                        <span>Partner</span>
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-4">
-                <h3 className="text-lg font-semibold mb-4">File Sharing</h3>
-                
-                <div className="space-y-4">
-                    {/* File Selection */}
-                    <div>
+            <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center">
+                        <FileUp className="w-5 h-5 mr-2" />
+                        File Sharing
+                    </h3>
+                    
+                    <div className="space-y-4">
                         <input
                             type="file"
-                            onChange={handleFileSelect}
+                            onChange={(e) => setSelectedFile(e.target.files[0])}
                             className="block w-full text-sm text-gray-500
                                 file:mr-4 file:py-2 file:px-4
                                 file:rounded-full file:border-0
@@ -379,46 +456,89 @@ const Room = () => {
                                 hover:file:bg-blue-100"
                             disabled={!isConnected}
                         />
-                    </div>
 
-                    {/* Send Button */}
-                    {selectedFile && (
-                        <div>
+                        {selectedFile && (
                             <button
                                 onClick={sendFile}
                                 disabled={!isConnected || !selectedFile}
                                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 
-                                         disabled:opacity-50 disabled:cursor-not-allowed"
+                                         disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                             >
+                                <Send className="w-4 h-4 mr-2" />
                                 Send {selectedFile.name}
                             </button>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Progress Bars */}
-                    {sendProgress > 0 && (
-                        <div className="space-y-2">
-                            <div className="text-sm text-gray-600">Sending...</div>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                <div 
-                                    className="bg-blue-600 h-2.5 rounded-full"
-                                    style={{ width: `${sendProgress}%` }}
-                                ></div>
+                        {sendProgress > 0 && (
+                            <div className="space-y-2">
+                                <div className="text-sm text-gray-600">Sending...</div>
+                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div 
+                                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                                        style={{ width: `${sendProgress}%` }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {isReceivingFile && (
-                        <div className="space-y-2">
-                            <div className="text-sm text-gray-600">Receiving file...</div>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                <div 
-                                    className="bg-green-600 h-2.5 rounded-full"
-                                    style={{ width: `${receiveProgress}%` }}
-                                ></div>
+                        {isReceivingFile && (
+                            <div className="space-y-2">
+                                <div className="text-sm text-gray-600">Receiving file...</div>
+                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div 
+                                        className="bg-green-600 h-2.5 rounded-full transition-all duration-300"
+                                        style={{ width: `${receiveProgress}%` }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center">
+                        <MessageCircle className="w-5 h-5 mr-2" />
+                        Messages
+                    </h3>
+                    
+                    <div className="h-48 overflow-y-auto mb-4 p-2 bg-gray-50 rounded">
+                        {messages.map((msg, index) => (
+                            <div 
+                                key={index} 
+                                className={`mb-2 p-2 rounded ${
+                                    msg.sender === "You" 
+                                        ? "bg-blue-100 ml-auto" 
+                                        : "bg-gray-100"
+                                } max-w-[80%] ${
+                                    msg.sender === "You" 
+                                        ? "ml-auto" 
+                                        : "mr-auto"
+                                }`}
+                            >
+                                <div className="text-xs text-gray-600">{msg.sender}</div>
+                                <div>{msg.text}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                        <input 
+                            type="text"
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                            placeholder="Type a message..."
+                            className="flex-1 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button 
+                            onClick={sendMessage} 
+                            disabled={isSending || !message.trim()}
+                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 
+                                     disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                        >
+                            <Send className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
