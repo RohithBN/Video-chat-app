@@ -16,17 +16,27 @@ import { Label } from "@/components/ui/label";
 
 const CreateRoom = () => {
   const [link, setLink] = useState("");
+  const [username, setUsername] = useState("");
 
   const create = async (e) => {
     e.preventDefault();
+    if (!username.trim()) {
+      alert("Please enter a username");
+      return;
+    }
     const resp = await fetch("http://localhost:8000/create");
     const { room_id } = await resp.json();
-    window.location.href = `/room/${room_id}`;
+    window.location.href = `/room/${room_id}?username=${encodeURIComponent(username)}`;
   };
 
   const handleJoin = () => {
+    if (!username.trim()) {
+      alert("Please enter a username");
+      return;
+    }
     if (link) {
-      window.location.href = link;
+      const separator = link.includes('?') ? '&' : '?';
+      window.location.href = `${link}${separator}username=${encodeURIComponent(username)}`;
     }
   };
 
@@ -37,6 +47,19 @@ const CreateRoom = () => {
           Video Meeting
         </h1>
         
+        <div className="mb-6">
+          <Label htmlFor="username" className="text-white mb-2 block">
+            Enter your name
+          </Label>
+          <Input
+            id="username"
+            placeholder="Your name"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="bg-gray-700 border-gray-600 text-white w-full"
+          />
+        </div>
+
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
           <Button
             onClick={create}
@@ -47,14 +70,13 @@ const CreateRoom = () => {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white border-gray-600 py-4 px-8 rounded-lg transition-all duration-300"
               >
                 Join Room
               </Button>
             </DialogTrigger>
-            
             <DialogContent className="sm:max-w-md bg-gray-800 border-gray-700">
               <DialogHeader>
                 <DialogTitle className="text-white">Join Meeting</DialogTitle>
@@ -62,7 +84,6 @@ const CreateRoom = () => {
                   Enter the meeting link below to join an existing room
                 </DialogDescription>
               </DialogHeader>
-              
               <div className="flex items-center space-x-2 mt-4">
                 <div className="grid flex-1 gap-2">
                   <Label htmlFor="link" className="sr-only">
@@ -75,16 +96,15 @@ const CreateRoom = () => {
                     className="bg-gray-700 border-gray-600 text-white"
                   />
                 </div>
-                <Button 
-                  type="submit" 
-                  size="sm" 
+                <Button
+                  type="submit"
+                  size="sm"
                   className="px-3 bg-gray-700 hover:bg-gray-600"
                 >
                   <span className="sr-only">Copy</span>
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
-              
               <DialogFooter className="sm:justify-start mt-6">
                 <DialogClose asChild>
                   <Button

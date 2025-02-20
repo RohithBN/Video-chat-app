@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Mic, MicOff, Video, VideoOff, MessageCircle, Share, Users, FileUp, X, Send } from "lucide-react";
 
 
@@ -13,10 +13,13 @@ const Room = () => {
     const receiveChannel = useRef(); // references the data channel for receiving files
     const fileChunks = useRef([]); // references the chunks of the file being sent
     const { roomID } = useParams();
+    const [searchParams] = useSearchParams();
+    const username = searchParams.get("username");
     const fileName = useRef("");
     const fileType = useRef("");
     const sendMessageChannel=useRef(); // references the data channel for sending messages
     const receiveMessageChannel=useRef(); // references the data channel for receiving messages
+    const[partnerUsername,setPartnerUsername]=useState("")
 
     const [selectedFile, setSelectedFile] = useState(null);
     const [message,setMessage]=useState("");
@@ -83,12 +86,13 @@ const Room = () => {
 
                 //websocket connection
                 webSocketRef.current = new WebSocket(
-                    `ws://localhost:8000/join?roomID=${roomID}`
+                    `ws://localhost:8000/join?roomID=${roomID}&username=${username}`
                 );
 
                 webSocketRef.current.addEventListener("open", () => {
                     // once you join the room , send message to the server
-                    webSocketRef.current.send(JSON.stringify({ join: true }));
+                    webSocketRef.current.send(JSON.stringify({ join: true,partnerName:username }));
+                    
                 });
 
                 webSocketRef.current.addEventListener("message", async (e) => {
@@ -99,6 +103,15 @@ const Room = () => {
                     if (message.join) {
                         // if a peer joins , then call the user
                         callUser();
+                    }
+
+                    if (message.partnerName && message.partnerName !== username) {
+                        setPartnerUsername(message.partnerName);
+                        
+                        // Only send back if this is the first time receiving partner's name
+                        if (!partnerUsername) {
+                            webSocketRef.current.send(JSON.stringify({ partnerName: username }));
+                        }
                     }
 
                     if (message.offer) {
@@ -531,7 +544,7 @@ const Room = () => {
                       playsInline
                     />
                     <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-sm font-medium">
-                      You
+                      {username}
                     </div>
                   </div>
                   
@@ -546,7 +559,7 @@ const Room = () => {
                       playsInline
                     />
                     <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-sm font-medium">
-                      Partner
+                      {partnerUsername}
                     </div>
                   </div>
                 </div>
@@ -613,12 +626,12 @@ const Room = () => {
                   {activePanel === 'participants' && (
                     <div className="p-6 space-y-6">
                       <div className="flex items-center space-x-4 p-4 bg-gray-700 rounded-xl">
-                        <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">Y</div>
-                        <span className="text-white font-medium">You</span>
+                        <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">{username[0].toUpperCase()}</div>
+                        <span className="text-white font-medium">{username} (You)</span>
                       </div>
                       <div className="flex items-center space-x-4 p-4 bg-gray-700 rounded-xl">
-                        <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-white font-semibold">P</div>
-                        <span className="text-white font-medium">Partner</span>
+                        <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-white font-semibold">{partnerUsername[0].toUpperCase()}</div>
+                        <span className="text-white font-medium">{partnerUsername}</span>
                       </div>
                     </div>
                   )}
