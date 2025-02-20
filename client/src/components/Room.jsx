@@ -4,19 +4,19 @@ import { Mic, MicOff, Video, VideoOff, MessageCircle, Share, Users, FileUp, X, S
 
 
 const Room = () => {
-    const userVideo = useRef();
-    const userStream = useRef();
-    const partnerVideo = useRef();
-    const peerRef = useRef();
-    const webSocketRef = useRef();
-    const sendChannel = useRef();
-    const receiveChannel = useRef();
-    const fileChunks = useRef([]);
+    const userVideo = useRef(); //references your video
+    const userStream = useRef(); // references your stream
+    const partnerVideo = useRef(); // references partner's video
+    const peerRef = useRef(); // references the peer connection
+    const webSocketRef = useRef(); // references the WebSocket connection
+    const sendChannel = useRef(); // references the data channel for sending files
+    const receiveChannel = useRef(); // references the data channel for receiving files
+    const fileChunks = useRef([]); // references the chunks of the file being sent
     const { roomID } = useParams();
     const fileName = useRef("");
     const fileType = useRef("");
-    const sendMessageChannel=useRef();
-    const receiveMessageChannel=useRef();
+    const sendMessageChannel=useRef(); // references the data channel for sending messages
+    const receiveMessageChannel=useRef(); // references the data channel for receiving messages
 
     const [selectedFile, setSelectedFile] = useState(null);
     const [message,setMessage]=useState("");
@@ -31,7 +31,8 @@ const Room = () => {
     const [activePanel, setActivePanel] = useState(null); 
     const [sharingVideo, setSharingVideo] = useState(false);
 
-    const toggleMute = () => {setIsMuted(!isMuted)
+    const toggleMute = () => {
+        setIsMuted(!isMuted)
         userStream.current.getAudioTracks()[0].enabled = isMuted;
     };
     const toggleVideo = () => {
@@ -75,31 +76,39 @@ const Room = () => {
                     stream.getTracks().forEach(track => track.stop());
                     return;
                 }
-
+                //this displays your own video from camera
                 userVideo.current.srcObject = stream;
+                // now the video is stored as stream in userStream
                 userStream.current = stream;
 
+                //websocket connection
                 webSocketRef.current = new WebSocket(
                     `ws://localhost:8000/join?roomID=${roomID}`
                 );
 
                 webSocketRef.current.addEventListener("open", () => {
+                    // once you join the room , send message to the server
                     webSocketRef.current.send(JSON.stringify({ join: true }));
                 });
 
                 webSocketRef.current.addEventListener("message", async (e) => {
+                    //the server receives message and broadcasts to all the connected peers apart from yourself
+                    // when you receive a message from the server
                     const message = JSON.parse(e.data);
 
                     if (message.join) {
+                        // if a peer joins , then call the user
                         callUser();
                     }
 
                     if (message.offer) {
+                        //handle the offer received from server
                         handleOffer(message.offer);
                     }
 
                     if (message.answer) {
                         console.log("Receiving Answer");
+                        // set the answer as remote description
                         await peerRef.current?.setRemoteDescription(
                             new RTCSessionDescription(message.answer)
                         );
@@ -108,6 +117,7 @@ const Room = () => {
                     if (message.iceCandidate) {
                         console.log("Receiving ICE Candidate");
                         try {
+                            // add the ice candidate to the peer connection
                             await peerRef.current?.addIceCandidate(
                                 new RTCIceCandidate(message.iceCandidate)
                             );
@@ -149,6 +159,7 @@ const Room = () => {
 
     const createPeer = () => {
         console.log("Creating Peer Connection");
+        //create a new peer connection
         const peer = new RTCPeerConnection({
             iceServers: [
                 { 
@@ -159,8 +170,9 @@ const Room = () => {
                 }
             ]
         });
-
+        // add the ice candidate to the peer connection
         peer.onicecandidate = handleIceCandidateEvent;
+        // when a track is received, call the handleTrackEvent to handle tracks
         peer.ontrack = handleTrackEvent;
 
         return peer;
@@ -168,36 +180,44 @@ const Room = () => {
 
     const handleOffer = async (offer) => {
         console.log("Received Offer, Creating Answer");
+        // when the partner receives offer , create a new peer connection
         peerRef.current = createPeer();
 
         try {
+            // set the remote description as the offer
             await peerRef.current.setRemoteDescription(
                 new RTCSessionDescription(offer)
             );
-
+            // partner adds his tracks to the peer connection
             userStream.current.getTracks().forEach((track) => {
                 peerRef.current.addTrack(track, userStream.current);
             });
+            // partner creates a data channel to send files and messages
             sendChannel.current = peerRef.current.createDataChannel("sendData");
             sendMessageChannel.current= peerRef.current.createDataChannel("sendMessage")
+            // setup the data channel for sending files and messages
             setupDataChannel(sendChannel.current, false); // false → This is the sender
             setUpMessageChannel(sendChannel.current,false);
-            // Create data channel for receiving
+            // handling for when the partner receives the data
             peerRef.current.ondatachannel = (event) => {
                 const channel = event.channel;
                 if(channel.label==='sendDataChannel'){
+                    // if the channel is for sending files. 
+                    //NOTE: the label is set to 'sendDataChannel' in the sender side while sending file , so the sender data channel should match the partner (receivers) data chanenl label
                     receiveChannel.current=channel
                 }
                 else if(channel.label==='messageDataChannel'){
                     receiveMessageChannel.current=channel;
                 }
                 if (receiveChannel.current) {
+                    //set up data Channel to receive files and messGES
                     setupDataChannel(receiveChannel.current, true);
                     setUpMessageChannel(receiveMessageChannel.current,true);
                 }
                 
             };
 
+            //create an answer for the offer and set it as your local description
             const answer = await peerRef.current.createAnswer();
             await peerRef.current.setLocalDescription(answer);
 
@@ -211,25 +231,29 @@ const Room = () => {
 
     const callUser = async () => {
         console.log("Calling Other User");
+        // the peer ref references to the new peer connection made
         peerRef.current = createPeer();
         if(!sharingVideo){
+            //if user is not sharing video , add the user stream to the peer connection
         userStream.current.getTracks().forEach((track) => {
             peerRef.current.addTrack(track, userStream.current);
         });
     }
-    
-
         // Create data channel for sending file
         sendChannel.current = peerRef.current.createDataChannel("sendDataChannel");
         // create another data channel for sending messages
         sendMessageChannel.current=peerRef.current.createDataChannel("messageDataChannel")
+
         if(sendChannel.current) {
+            // setup the data channel for sending files
         setupDataChannel(sendChannel.current, false);
         }
         if(sendMessageChannel.current){
+            // setup the data channel for sending messages
             setUpMessageChannel(sendMessageChannel.current,false);
         }
         peerRef.current.ondatachannel = (event) => {
+            // when the partner sends data , this checks the label and determines if its file ot message
             const channel = event.channel;
             if(channel.label==='sendData'){
                 receiveChannel.current=channel
@@ -237,7 +261,7 @@ const Room = () => {
             else if(channel.label==='sendMessage'){
                 receiveMessageChannel.current=channel;
             }
-            if (receiveChannel.current) {
+            if (channel) {
                 setupDataChannel(receiveChannel.current, true);
                 setUpMessageChannel(receiveMessageChannel.current,true);
             }
@@ -245,9 +269,11 @@ const Room = () => {
         };
 
         try {
+            //create an offer to send to the partner
             const offer = await peerRef.current.createOffer();
+            //set the offer as your local description
             await peerRef.current.setLocalDescription(offer);
-
+            //send the offer to the servere
             webSocketRef.current.send(
                 JSON.stringify({ offer: peerRef.current.localDescription })
             );
@@ -257,6 +283,7 @@ const Room = () => {
     };
 
     const setupDataChannel = (channel, isReceiver) => {
+        //make the channle type arrayBuffer fot file trnasfer
         channel.binaryType = 'arraybuffer';
 
         channel.onopen = () => {
@@ -270,6 +297,7 @@ const Room = () => {
         };
 
         if (isReceiver) {
+            //if the channel is receiver , then handle the received file
             channel.onmessage = handleReceiveFile;
         }
     };
@@ -286,6 +314,7 @@ const Room = () => {
         };
         
         if(isReceiver){
+            // if the channel is receiver , then handle the received message
             channel.onmessage=handleReceiveMessage;
         }
         
@@ -406,6 +435,7 @@ const Room = () => {
 
     const handleTrackEvent = (e) => {
         console.log("Received Tracks");
+        // on receiving the tracks from the partner , set the partner video stream
         partnerVideo.current.srcObject = e.streams[0];
     };
 
