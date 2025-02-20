@@ -22,12 +22,14 @@ const Room = () => {
     const [message,setMessage]=useState("");
     const [isSending, setIsSending] = useState(false);
     const [messages, setMessages] = useState([]);
+    const [isConnected,setIsConnected]=useState(false);
 
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [activePanel, setActivePanel] = useState(null); 
+    const [sharingVideo, setSharingVideo] = useState(false);
 
     const toggleMute = () => {setIsMuted(!isMuted)
         userStream.current.getAudioTracks()[0].enabled = isMuted;
@@ -210,10 +212,12 @@ const Room = () => {
     const callUser = async () => {
         console.log("Calling Other User");
         peerRef.current = createPeer();
-
+        if(!sharingVideo){
         userStream.current.getTracks().forEach((track) => {
             peerRef.current.addTrack(track, userStream.current);
         });
+    }
+    
 
         // Create data channel for sending file
         sendChannel.current = peerRef.current.createDataChannel("sendDataChannel");
@@ -287,13 +291,6 @@ const Room = () => {
         
     }
 
-    const handleFileSelect = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            setSelectedFile(file);
-        }
-    };
-
     const sendFile = async () => {
         if (!selectedFile || !sendChannel.current) return;
 
@@ -316,7 +313,6 @@ const Room = () => {
                 const chunk = buffer.slice(offset, offset + chunkSize);
                 sendChannel.current.send(chunk);
                 offset += chunk.byteLength;
-                setSendProgress((offset / total) * 100);
             }
 
             // Send end message
@@ -360,7 +356,6 @@ const Room = () => {
                     fileType.current = metadata.type; // MIME type
     
                     fileChunks.current = [];
-                    setIsReceivingFile(true);
                 } else if (message.type === "end") {
                     // File transfer complete
                     const blob = new Blob(fileChunks.current, { type: fileType.current }); // Correct MIME type
@@ -379,8 +374,6 @@ const Room = () => {
                     // Cleanup
                     URL.revokeObjectURL(url);
                     fileChunks.current = [];
-                    setIsReceivingFile(false);
-                    setReceiveProgress(0);
                 }
             } else {
                 // Receiving actual file chunks
@@ -416,6 +409,81 @@ const Room = () => {
         partnerVideo.current.srcObject = e.streams[0];
     };
 
+    const toggleShareVideo = async () => {
+        try {
+          if (!sharingVideo) {
+            // Start screen sharing
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: false
+            });
+      
+            // Store original stream before replacing
+            if (!userVideo.current.originalStream) {
+              userVideo.current.originalStream = userVideo.current.srcObject;
+            }
+      
+            // Set the screen stream as the current stream
+            userVideo.current.srcObject = screenStream;  // Changed to use screenStream directly
+      
+            // Handle when user stops sharing via browser controls
+            screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+              setSharingVideo(false);
+              
+              // Switch back to camera
+              if (userVideo.current?.originalStream) {
+                userVideo.current.srcObject = userVideo.current.originalStream;
+                
+                // Replace track in peer connection
+                if (peerRef.current) {
+                  const senders = peerRef.current.getSenders();
+                  const sender = senders.find(s => s.track?.kind === 'video');
+                  if (sender) {
+                    const videoTrack = userVideo.current.originalStream.getVideoTracks()[0];
+                    sender.replaceTrack(videoTrack);
+                  }
+                }
+              }
+            });
+      
+            // Replace video track in peer connection
+            if (peerRef.current) {
+              const senders = peerRef.current.getSenders();
+              const sender = senders.find(s => s.track?.kind === 'video');
+              if (sender) {
+                await sender.replaceTrack(screenStream.getVideoTracks()[0]);
+              }
+            }
+      
+            setSharingVideo(true);
+          } else {
+            // Stop screen sharing
+            const currentStream = userVideo.current.srcObject;
+            const screenTrack = currentStream.getVideoTracks()[0];
+            screenTrack.stop();
+      
+            // Switch back to camera stream
+            if (userVideo.current.originalStream) {
+              userVideo.current.srcObject = userVideo.current.originalStream;
+              
+              // Replace track in peer connection
+              if (peerRef.current) {
+                const senders = peerRef.current.getSenders();
+                const sender = senders.find(s => s.track?.kind === 'video');
+                if (sender) {
+                  const videoTrack = userVideo.current.originalStream.getVideoTracks()[0];
+                  await sender.replaceTrack(videoTrack);
+                }
+              }
+            }
+      
+            setSharingVideo(false);
+          }
+        } catch (error) {
+          console.error('Error toggling screen share:', error);
+          setSharingVideo(false);
+        }
+      };
     return (
         <div className="h-screen bg-gray-900 flex flex-col">
             {/* Main content area */}
@@ -601,10 +669,10 @@ const Room = () => {
                 >
                     <FileUp size={20} />
                 </button>
-
                 <button
-                    onClick={() => setIsFullScreen(!isFullScreen)}
-                    className="p-3 rounded-full bg-gray-700 text-white hover:bg-gray-600"
+                    onClick={toggleShareVideo}
+                    className={`p-3 rounded-full bg-gray-700 text-white hover:bg-gray-600
+                    `}
                 >
                     <Share size={20} />
                 </button>
