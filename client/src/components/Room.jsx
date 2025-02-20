@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { MessageCircle, Send, Video, FileUp } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, MessageCircle, Share, Users, FileUp, X, Send } from "lucide-react";
 
 
 const Room = () => {
@@ -18,15 +18,25 @@ const Room = () => {
     const sendMessageChannel=useRef();
     const receiveMessageChannel=useRef();
 
-    const [isConnected, setIsConnected] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
-    const [sendProgress, setSendProgress] = useState(0);
-    const [receiveProgress, setReceiveProgress] = useState(0);
-    const [isReceivingFile, setIsReceivingFile] = useState(false);
     const [message,setMessage]=useState("");
     const [isSending, setIsSending] = useState(false);
-    const [receivedMessage,setReceivedMessage]=useState("")
     const [messages, setMessages] = useState([]);
+
+    const [isMuted, setIsMuted] = useState(false);
+    const [isVideoOff, setIsVideoOff] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isFullScreen, setIsFullScreen] = useState(false);
+    const [activePanel, setActivePanel] = useState(null); 
+
+    const toggleMute = () => {setIsMuted(!isMuted)
+        userStream.current.getAudioTracks()[0].enabled = isMuted;
+    };
+    const toggleVideo = () => {
+        setIsVideoOff(!isVideoOff);
+        userStream.current.getVideoTracks()[0].enabled = isVideoOff;
+    };
+
 
     const openCamera = async () => {
         const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -407,139 +417,197 @@ const Room = () => {
     };
 
     return (
-        <div className="max-w-6xl mx-auto p-4 space-y-6">
+        <div className="h-screen bg-gray-900 flex flex-col">
+            {/* Main content area */}
+            <div className="flex-1 flex relative">
+                {/* Video grid */}
+                <div className="flex-1 p-4">
+                    <div className={`grid gap-4 h-full ${isFullScreen ? '' : 'grid-cols-2'}`}>
+                        {/* Main video */}
+                        <div className={`relative bg-gray-800 rounded-lg overflow-hidden ${isFullScreen ? 'col-span-2' : ''}`}>
+                            <video
+                                ref={userVideo}
+                                className="w-full h-full object-cover"
+                                autoPlay
+                                playsInline
+                            />
+                            <div className="absolute bottom-4 left-4 bg-gray-900 bg-opacity-75 text-white px-3 py-1 rounded-lg text-sm">
+                                You
+                            </div>
+                        </div>
+                        
+                        {/* Self video (picture-in-picture style when fullscreen) */}
+                        <div className={`relative bg-gray-800 rounded-lg overflow-hidden ${
+                            isFullScreen ? 'absolute top-4 right-4 w-48 h-36' : ''
+                        }`}>
+                            <video
+                                ref={partnerVideo}
+                                className="w-full h-full object-cover"
+                                autoPlay
+                                playsInline
+                                
+                            />
+                            <div className="absolute bottom-4 left-4 bg-gray-900 bg-opacity-75 text-white px-3 py-1 rounded-lg text-sm">
+                                Partner
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-                <div className="relative">
-                    <video 
-                        className="w-full h-64 object-cover rounded-lg bg-gray-800"
-                        autoPlay 
-                        ref={userVideo} 
-                        muted
-                        controls={true}
-                    />
-                    <div className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-75 text-white px-2 py-1 rounded flex items-center">
-                        <Video className="w-4 h-4 mr-2" />
-                        <span>You</span>
+                {/* Side panel */}
+                {activePanel && (
+                    <div className="w-80 bg-gray-800 border-l border-gray-700">
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                            <h3 className="text-white font-medium">
+                                {activePanel === 'chat' && 'Chat'}
+                                {activePanel === 'participants' && 'Participants'}
+                                {activePanel === 'files' && 'Files'}
+                            </h3>
+                            <button 
+                                onClick={() => setActivePanel(null)}
+                                className="text-gray-400 hover:text-white"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {activePanel === 'chat' && (
+                            <div className="flex flex-col h-[calc(100%-64px)]">
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                    {messages.map((msg, index) => (
+                                        <div
+                                            key={index}
+                                            className={`max-w-[80%] ${
+                                                msg.sender === 'You' ? 'ml-auto' : ''
+                                            }`}
+                                        >
+                                            <div className="text-xs text-gray-400 mb-1">
+                                                {msg.sender}
+                                            </div>
+                                            <div className={`rounded-lg p-3 ${
+                                                msg.sender === 'You'
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'bg-gray-700 text-white'
+                                            }`}>
+                                                {msg.text}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-4 border-t border-gray-700">
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={message}
+                                            onChange={(e) => setMessage(e.target.value)}
+                                            placeholder="Type a message..."
+                                            className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <button
+                                            className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                                            onClick={sendMessage}
+                                        >
+                                            <Send size={20}  />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activePanel === 'participants' && (
+                            <div className="p-4 space-y-4">
+                                <div className="flex items-center space-x-2">
+                                    <div className="w-8 h-8 bg-gray-700 rounded-full"></div>
+                                    <span className="text-white">You</span>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <div className="w-8 h-8 bg-gray-700 rounded-full"></div>
+                                        <span className="text-white">Partner</span>
+                                        </div>
+                                        </div>
+                                        )}
+
+                        {activePanel === 'files' && (
+                            <div className="p-4 space-y-4">
+                                <input
+                                    type="file"
+                                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                                    className="block w-full text-sm text-gray-400
+                                        file:mr-4 file:py-2 file:px-4
+                                        file:rounded-full file:border-0
+                                        file:text-sm file:font-semibold
+                                        file:bg-gray-700 file:text-white
+                                        hover:file:bg-gray-600"
+                                />
+                                {selectedFile && (
+                                    <div className="bg-gray-700 p-4 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-white">{selectedFile.name}</span>
+                                            <button className="text-blue-400 hover:text-blue-300" onClick={sendFile}>
+                                                Send
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
-                </div>
-                <div className="relative">
-                    <video 
-                        className="w-full h-64 object-cover rounded-lg bg-gray-800"
-                        autoPlay 
-                        ref={partnerVideo}
-                        controls={true}
-                    />
-                    <div className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-75 text-white px-2 py-1 rounded flex items-center">
-                        <Video className="w-4 h-4 mr-2" />
-                        <span>Partner</span>
-                    </div>
-                </div>
+                )}
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg shadow p-4">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                        <FileUp className="w-5 h-5 mr-2" />
-                        File Sharing
-                    </h3>
-                    
-                    <div className="space-y-4">
-                        <input
-                            type="file"
-                            onChange={(e) => setSelectedFile(e.target.files[0])}
-                            className="block w-full text-sm text-gray-500
-                                file:mr-4 file:py-2 file:px-4
-                                file:rounded-full file:border-0
-                                file:text-sm file:font-semibold
-                                file:bg-blue-50 file:text-blue-700
-                                hover:file:bg-blue-100"
-                            disabled={!isConnected}
-                        />
+            {/* Control bar */}
+            <div className="h-16 bg-gray-800 border-t border-gray-700 flex items-center justify-center space-x-4">
+                <button
+                    onClick={toggleMute}
+                    className={`p-3 rounded-full ${
+                        isMuted ? 'bg-red-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                    }`}
+                >
+                    {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+                </button>
 
-                        {selectedFile && (
-                            <button
-                                onClick={sendFile}
-                                disabled={!isConnected || !selectedFile}
-                                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 
-                                         disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                            >
-                                <Send className="w-4 h-4 mr-2" />
-                                Send {selectedFile.name}
-                            </button>
-                        )}
+                <button
+                    onClick={toggleVideo}
+                    className={`p-3 rounded-full ${
+                        isVideoOff ? 'bg-red-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                    }`}
+                >
+                    {isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
+                </button>
 
-                        {sendProgress > 0 && (
-                            <div className="space-y-2">
-                                <div className="text-sm text-gray-600">Sending...</div>
-                                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                    <div 
-                                        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                                        style={{ width: `${sendProgress}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
+                <button
+                    onClick={() => setActivePanel(activePanel === 'chat' ? null : 'chat')}
+                    className={`p-3 rounded-full ${
+                        activePanel === 'chat' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                    }`}
+                >
+                    <MessageCircle size={20} />
+                </button>
 
-                        {isReceivingFile && (
-                            <div className="space-y-2">
-                                <div className="text-sm text-gray-600">Receiving file...</div>
-                                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                    <div 
-                                        className="bg-green-600 h-2.5 rounded-full transition-all duration-300"
-                                        style={{ width: `${receiveProgress}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <button
+                    onClick={() => setActivePanel(activePanel === 'participants' ? null : 'participants')}
+                    className={`p-3 rounded-full ${
+                        activePanel === 'participants' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                    }`}
+                >
+                    <Users size={20} />
+                </button>
 
-                <div className="bg-white rounded-lg shadow p-4">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                        <MessageCircle className="w-5 h-5 mr-2" />
-                        Messages
-                    </h3>
-                    
-                    <div className="h-48 overflow-y-auto mb-4 p-2 bg-gray-50 rounded">
-                        {messages.map((msg, index) => (
-                            <div 
-                                key={index} 
-                                className={`mb-2 p-2 rounded ${
-                                    msg.sender === "You" 
-                                        ? "bg-blue-100 ml-auto" 
-                                        : "bg-gray-100"
-                                } max-w-[80%] ${
-                                    msg.sender === "You" 
-                                        ? "ml-auto" 
-                                        : "mr-auto"
-                                }`}
-                            >
-                                <div className="text-xs text-gray-600">{msg.sender}</div>
-                                <div>{msg.text}</div>
-                            </div>
-                        ))}
-                    </div>
+                <button
+                    onClick={() => setActivePanel(activePanel === 'files' ? null : 'files')}
+                    className={`p-3 rounded-full ${
+                        activePanel === 'files' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                    }`}
+                >
+                    <FileUp size={20} />
+                </button>
 
-                    <div className="flex gap-2">
-                        <input 
-                            type="text"
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-                            placeholder="Type a message..."
-                            className="flex-1 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <button 
-                            onClick={sendMessage} 
-                            disabled={isSending || !message.trim()}
-                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 
-                                     disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                        >
-                            <Send className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
+                <button
+                    onClick={() => setIsFullScreen(!isFullScreen)}
+                    className="p-3 rounded-full bg-gray-700 text-white hover:bg-gray-600"
+                >
+                    <Share size={20} />
+                </button>
             </div>
         </div>
     );
