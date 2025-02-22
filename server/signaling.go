@@ -60,8 +60,14 @@ func CreateRoomRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 func JoinRoomRequestHandler(w http.ResponseWriter, r *http.Request) {
     roomID, ok := r.URL.Query()["roomID"]
+	if !ok{
+		log.Println("roomID missing in URL Parameters")
+        http.Error(w, "Missing roomID", http.StatusBadRequest)
+        return
+	}
+	name,ok:=r.URL.Query()["username"]
     if !ok {
-        log.Println("roomID missing in URL Parameters")
+        log.Println("username missing in URL Parameters")
         http.Error(w, "Missing roomID", http.StatusBadRequest)
         return
     }
@@ -79,7 +85,7 @@ func JoinRoomRequestHandler(w http.ResponseWriter, r *http.Request) {
     })
 
     // Add participant to room
-    AllRooms.InsertIntoRoom(roomID[0], false, ws)
+    AllRooms.InsertIntoRoom(roomID[0], false, ws,name[0])
 
     // Broadcast join message
     broadcast <- broadcastMsg{

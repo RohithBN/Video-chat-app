@@ -9,7 +9,6 @@ import (
 func main() {
     server.AllRooms.Init()
     
-    // Start broadcaster once
     go server.Broadcaster()
     
     http.HandleFunc("/create", server.CreateRoomRequestHandler)

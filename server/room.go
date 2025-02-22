@@ -9,6 +9,7 @@ import (
 )
 
 type Participant struct {
+    Name string
     Host bool
     Conn *websocket.Conn
 }
@@ -43,11 +44,11 @@ func (r *RoomMap) CreateRoom() string {
     return roomID
 }
 
-func (r *RoomMap) InsertIntoRoom(roomID string, host bool, conn *websocket.Conn) {
+func (r *RoomMap) InsertIntoRoom(roomID string, host bool, conn *websocket.Conn,name string) {
     r.Mutex.Lock()
     defer r.Mutex.Unlock()
 
-    p := Participant{host, conn}
+    p := Participant{name,host, conn}
     log.Printf("Inserting into Room: %s", roomID)
     r.Map[roomID] = append(r.Map[roomID], p)
 }
